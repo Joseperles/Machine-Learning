@@ -1,0 +1,121 @@
+Human Activity Recognition: a prediction algorithm
+========================================================
+
+## Introduction 
+
+Human Activity Recognition - HAR - has emerged as a key research area in the last years and is gaining increasing attention by the pervasive computing research community. There are many potential applications for HAR, like: elderly monitoring, life log systems for monitoring energy expenditure and for supporting weight-loss programs, and digital assistants for weight lifting exercises (Uglino et al, 2012).  
+
+An possible approach for the Weight Lifting Exercises dataset is to investigate "how (well)" an activity was performed by the wearer (Velloso et al, 2013). In this experiment, six young health participants (adelmo, carlitos, chales, eurico, jeremy and pedro) were asked to perform one set of 10 repetitions of the Unilateral Dumbbell Biceps Curl in five different fashions: exactly according to the specification (Class A), throwing the elbows to the front (Class B), lifting the dumbbell only halfway (Class C), lowering the dumbbell only halfway (Class D) and throwing the hips to the front (Class E).  
+
+## Advise
+
+In order to reproduce this analysis, please download both datasets in your working directory.
+
+## Database
+
+The database was splitted in a training dataset containing 19,622 observations and 160 variables reflecting different measures taken by accelerometers, and a test dataset containing 20 observations. The purpose of this paper is to build an to predict the manner in which people did the exercise. The variable of interest is "classe". The database contains missing values, and numeric values that are taken "as factor".
+
+These piece of code: reflects the download and preliminay look of data. We not compute in a visible Chunk due to space restrictions.  
+"pml.training <- read.csv("~/pml-training.csv")  
+#dim(pml.training)  
+#Looking the data  
+str(pml.training, list.len = 999)"  
+
+
+```{r, echo=FALSE}
+pml.training <- read.csv("~/pml-training.csv")
+#dim(pml.training)
+```
+
+## Model estimation and selection.
+
+As the final manner in which people did the exercise method we will use classification trees. R contains two different implementations of tree classifiers, tree() in package tree, and rpart() in package rpart. Due to its similarity to GLM and GAM (deviance-based) the material below is based on tree(). Package caret also unifies different techniques to predict doing tasks more easily.  
+
+To use the tree() function  an approach similar to the glm() function is used(a formula with a dependent variable and independent (predictor) variables on the right). In a first stpep we perform a Classification tree based in the variables of the database that have not missing values. This model gets an accuracy of 74 per cent (1- missclassification rate).
+
+```{r}
+#Model
+library(tree)
+fit<-tree(classe~num_window+roll_belt+pitch_belt+yaw_belt+total_accel_belt+gyros_belt_x+gyros_belt_y+gyros_belt_z+accel_belt_x+accel_belt_y+accel_belt_z+magnet_belt_x+magnet_belt_y+magnet_belt_z+roll_arm+pitch_arm+yaw_arm+total_accel_arm+gyros_arm_x+gyros_arm_y+gyros_arm_z+accel_arm_x+accel_arm_y+accel_arm_z+magnet_arm_x+magnet_arm_y+magnet_arm_z+roll_dumbbell+pitch_dumbbell+yaw_dumbbell+gyros_dumbbell_x+gyros_dumbbell_y+gyros_dumbbell_z+accel_dumbbell_x+accel_dumbbell_y+accel_dumbbell_z+magnet_dumbbell_x+magnet_dumbbell_y+magnet_dumbbell_z+roll_forearm+pitch_forearm+yaw_forearm +total_accel_dumbbell+total_accel_forearm, data=pml.training)
+summary(fit)
+
+```
+
+
+```{r fig.width=7, fig.height=6}
+plot(fit)
+text(fit)
+```
+
+Is well-known that tree-classifiers tend to over-fit their models extremely. To establish a realistic error rate for the model, a 10-fold cross-validation  approach is generally used. In this approach, 10% of the data are held out, a tree is fit to the other 90% of the data, and the held-out data are dropped through the tree. While doing so, we note at what level the tree gives the best results. Then we hold out a different 10% and repeat. The whole thing is automated with the cv.tree() function.  
+
+```{r fig.width=7, fig.height=6}
+#Tree diagnosis
+# cross-validated scores 
+# (differences for pruning and shrinking)
+plot(cv.tree(fit))
+```
+
+The curve shows where the minimum deviance occurred with the cross-validated tree. 
+In this case, the best tree would appear to be with all terminal nodes. Still, a tree with 10 nodes is also acceptable. To get that tree, we use the prune.tree() function with a best=n argument, where n = the number of terminal nodes we want. 
+Arguably, based on parsimony, we would want the smallest tree that has minimum cross-validated deviance. As a special case, if the minimum deviance occurs with a tree with 1 node, then none of your models are better than random, although some might be no worse. Alternatively, in an exploratory mode, we might want the most highly-resolved tree that is among the trees with lowest deviance (as long as that does not include the null tree with one node).In our case, the accuracy for a tree with 10 nodes is a very low 60 per cent. Slightly better than flipping a coin.  
+
+```{r}
+#Prune tree
+prunetree<-prune.tree(fit,best=10)
+summary(prunetree)
+
+```
+
+```{r fig.width=7, fig.height=6}
+plot(prunetree)
+text(prunetree)
+```
+
+For all those reasons we prefer to do our predictions with the original tree, expecting an optimistic error rate of 26 per cent. 
+
+## Predictions in training set.
+
+To get the predictions in the training set we use the following code:
+
+```{r}
+#Prediction in training set with the original tree
+predtraing<-predict(fit,pml.training, type="class")
+table(pml.training$classe,predict(fit,type="class"))
+```
+
+We can see that the best prediction is obtained in the "E" case.
+
+## Predictions in test set.
+
+To get the predictions in the testing set, we load the testing data and use the following code:
+```{r}
+#Load test set data and predictions based in original model
+pml.testing <- read.csv("~/pml-testing.csv")
+predtesting<-predict(fit,pml.testing, type="class")
+predtesting
+```
+
+## Conclussions
+
+Based in our classification tree our prediction for the 20 subjects are as follows: B A B A D C D D A A C C A A E D A D D B
+
+## Function to create file
+#Function to create the files to automatic evaluation
+answers = c("B","A", "B", "A", "D", "C", "D", "D", "A", "A", "C", "C", "A", "A", "E", "D", "A", "D", "D", "B")
+pml_write_files = function(x){
+  n = length(x)
+  for(i in 1:n){
+    filename = paste0("problem_id_",i,".txt")
+    write.table(x[i],file=filename,quote=FALSE,row.names=FALSE,col.names=FALSE)
+  }
+}
+pml_write_files(answers)
+
+## References
+Ugulino, W.; Cardador, D.; Vega, K.; Velloso, E.; Milidiu, R.; Fuks, H. Wearable Computing: Accelerometers' Data Classification of Body Postures and Movements. Proceedings of 21st Brazilian Symposium on Artificial Intelligence. Advances in Artificial Intelligence - SBIA 2012. In: Lecture Notes in Computer Science. , pp. 52-61. Curitiba, PR: Springer Berlin / Heidelberg, 2012. ISBN 978-3-642-34458-9. DOI: 10.1007/978-3-642-34459-6_6.
+
+Velloso, E.; Bulling, A.; Gellersen, H.; Ugulino, W.; Fuks, H. Qualitative Activity Recognition of Weight Lifting Exercises. Proceedings of 4th International Conference in Cooperation with SIGCHI (Augmented Human '13) . Stuttgart, Germany: ACM SIGCHI, 2013.
+
+
+
